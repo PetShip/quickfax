@@ -1,10 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import formidable, { File } from "formidable";
-import { readFile } from "node:fs/promises";
 
-export const config = {
-  api: { bodyParser: false }   // safeguard für Vercel-Runtime
-};
+export const config = { api: { bodyParser: false } };
+
+function parseForm(req: NextApiRequest): Promise<{ files: formidable.Files }> {
+  const form = formidable({ maxFiles: 1, maxFileSize: 10 * 1024 * 1024 });
+  return new Promise((resolve, reject) => {
+    // richtiger Reihenfolge: (err, fields, files)
+    form.parse(req, (err, _fields, files) => {
+      if (err) reject(err);
+      else resolve({ files });
+    });
+  });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -12,19 +20,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Only POST allowed" });
   }
 
-  const form = formidable({ maxFiles: 1, maxFileSize: 10 * 1024 * 1024 }); // 10 MB
-  const [fields, files] = await form.parse(req);
-  const file = files.file as File | undefined;
+  try {
+  const { files } = await parseForm(req);
 
-  if (!file) {
-    return res.status(400).json({ error: "No file sent under field 'file'" });
-  }
+  // Datei ermitteln, egal ob Array oder Einzelobjekt
+  const anyFile = (files.file ?? Object.values(files)[0]) as any;
+  const file: File | undefined = Array.isArray(anyFile) ? anyFile[0] : anyFile;
 
-  // optional – Inhalt kurz prüfen
-  const buffer = await readFile(file.filepath);
+  if (!file) return res.status(400).json({ error: "No file received" });
+
   return res.status(200).json({
-    filename: file.originalFilename,
-    size: buffer.length,
-    mimetype: file.mimetype
+    filename: file.originalFilename ?? file.name,
+    size: file.size,
+    mimetype: file.mimetype ?? file.type
   });
+} catch (err) {
+  console.error(err);
+  return res.status(500).json({ error: "Upload failed", detail: `${err}` });
+}
 }
