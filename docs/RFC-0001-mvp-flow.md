@@ -1,7 +1,7 @@
 ﻿---
 rfc: 0001
 title: MVP Fax-Flow
-status: Draft
+status: Accepted
 authors: [pete]
 created: 2025-06-19
 ---
